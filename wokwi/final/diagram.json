@@ -1,0 +1,539 @@
+{
+  "version": 1,
+  "author": "Cultiva Tech - Geronimo Alvarez y Melanny Alzate",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-breadboard",
+      "id": "bb",
+      "top": 150.6,
+      "left": 98.8,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-esp32-devkit-v1",
+      "id": "esp",
+      "top": 190,
+      "left": -240,
+      "attrs": {
+        "cpuFrequency": "16",
+        "label": "ESP32"
+      }
+    },
+    {
+      "type": "wokwi-dht22",
+      "id": "dht",
+      "top": -86.1,
+      "left": 129,
+      "attrs": {
+        "temperature": "24",
+        "humidity": "65",
+        "label": "DHT22"
+      }
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "soil",
+      "top": -58.9,
+      "left": 335.8,
+      "attrs": {
+        "value": "450",
+        "label": "Humedad de suelo (simulada)"
+      }
+    },
+    {
+      "type": "wokwi-photoresistor-sensor",
+      "id": "light",
+      "top": -54.4,
+      "left": 528.8,
+      "attrs": {
+        "lux": "500",
+        "label": "LDR AO"
+      }
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "tank",
+      "top": 510,
+      "left": 350,
+      "attrs": {
+        "distance": "20",
+        "label": "Nivel de agua HC-SR04"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "pull",
+      "top": 65,
+      "left": 175,
+      "rotate": 90,
+      "attrs": {
+        "value": "10000"
+      }
+    },
+    {
+      "type": "wokwi-relay-module",
+      "id": "pumpRelay",
+      "top": 150,
+      "left": 910,
+      "attrs": {
+        "transistor": "pnp",
+        "label": "Canal 1 - Bomba"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "pumpR",
+      "top": 186.35,
+      "left": 1113.6,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "pumpLED",
+      "top": 150,
+      "left": 1232.6,
+      "attrs": {
+        "color": "blue",
+        "label": "Bomba",
+        "flip": "1"
+      }
+    },
+    {
+      "type": "wokwi-relay-module",
+      "id": "lampRelay",
+      "top": 355.4,
+      "left": 912,
+      "attrs": {
+        "transistor": "pnp",
+        "label": "Canal 2 - Iluminacion"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "lampR",
+      "top": 387.95,
+      "left": 1113.6,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "lampLED",
+      "top": 361.2,
+      "left": 1233,
+      "attrs": {
+        "color": "yellow",
+        "label": "Iluminacion",
+        "flip": "1"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "bb:tn.50",
+      "bb:bn.50",
+      "black",
+      [
+        "h35",
+        "v172.8",
+        "h-35"
+      ]
+    ],
+    [
+      "dht:VCC",
+      "bb:tp.6",
+      "red",
+      [
+        "v25",
+        "*",
+        "v-25"
+      ]
+    ],
+    [
+      "dht:GND",
+      "bb:tn.7",
+      "black",
+      [
+        "v35",
+        "*",
+        "v-15"
+      ]
+    ],
+    [
+      "light:VCC",
+      "bb:tp.38",
+      "red",
+      [
+        "h18",
+        "v96.6",
+        "h-151.6"
+      ]
+    ],
+    [
+      "light:GND",
+      "bb:tn.39",
+      "black",
+      [
+        "h27.6",
+        "v105.8",
+        "h-152.8"
+      ]
+    ],
+    [
+      "pull:2",
+      "bb:tp.9",
+      "red",
+      [
+        "v15",
+        "*",
+        "v-35"
+      ]
+    ],
+    [
+      "soil:SIG",
+      "esp:D34",
+      "orange",
+      [
+        "v55",
+        "h-130",
+        "v-179.8",
+        "h-523.2",
+        "v358.3"
+      ]
+    ],
+    [
+      "light:AO",
+      "esp:D35",
+      "magenta",
+      [
+        "h27.6",
+        "v-0.1",
+        "h62.4",
+        "v-139.9",
+        "h-1092",
+        "v402.4"
+      ]
+    ],
+    [
+      "tank:GND",
+      "bb:bn.29",
+      "black",
+      [
+        "v40",
+        "h110",
+        "*",
+        "v50"
+      ]
+    ],
+    [
+      "tank:TRIG",
+      "esp:D5",
+      "blue",
+      [
+        "v65",
+        "h-110",
+        "v-220",
+        "h-250",
+        "*",
+        "h85"
+      ]
+    ],
+    [
+      "tank:ECHO",
+      "esp:D18",
+      "cyan",
+      [
+        "v80",
+        "h-135",
+        "v-245",
+        "h-270",
+        "*",
+        "h100"
+      ]
+    ],
+    [
+      "pumpRelay:GND",
+      "bb:bn.42",
+      "black",
+      [
+        "h-65.2",
+        "v226.57",
+        "h-229.6"
+      ]
+    ],
+    [
+      "pumpRelay:COM",
+      "bb:tp.42",
+      "red",
+      [
+        "h51.2",
+        "v-84",
+        "h-460"
+      ]
+    ],
+    [
+      "pumpRelay:NO",
+      "pumpR:1",
+      "purple",
+      [
+        "h25",
+        "v-0.28",
+        "h64.6"
+      ]
+    ],
+    [
+      "pumpR:2",
+      "pumpLED:A",
+      "purple",
+      [
+        "h30",
+        "v0"
+      ]
+    ],
+    [
+      "pumpLED:C",
+      "bb:bn.43",
+      "black",
+      [
+        "v80",
+        "h-403.2",
+        "v145.89",
+        "h-229.6"
+      ]
+    ],
+    [
+      "lampRelay:GND",
+      "bb:bn.47",
+      "black",
+      [
+        "h-28.8",
+        "v0.03",
+        "h-210.4"
+      ]
+    ],
+    [
+      "lampRelay:IN",
+      "esp:D27",
+      "yellow",
+      [
+        "h-17.2",
+        "v320",
+        "h-1202",
+        "v-413"
+      ]
+    ],
+    [
+      "lampRelay:COM",
+      "bb:tp.47",
+      "red",
+      [
+        "h35",
+        "v-100",
+        "*",
+        "v-45"
+      ]
+    ],
+    [
+      "lampRelay:NO",
+      "lampR:1",
+      "yellow",
+      [
+        "h25",
+        "v0.11",
+        "h62.6"
+      ]
+    ],
+    [
+      "lampR:2",
+      "lampLED:A",
+      "yellow",
+      [
+        "h30",
+        "v0"
+      ]
+    ],
+    [
+      "lampLED:C",
+      "bb:bn.48",
+      "black",
+      [
+        "v80",
+        "h-384.4",
+        "v0.26",
+        "h-191.2"
+      ]
+    ],
+    [
+      "esp:TX0",
+      "$serialMonitor:RX",
+      "",
+      [
+        "h0"
+      ]
+    ],
+    [
+      "esp:RX0",
+      "$serialMonitor:TX",
+      "",
+      [
+        "h0"
+      ]
+    ],
+    [
+      "pumpRelay:VCC",
+      "bb:bp.41",
+      "red",
+      [
+        "h-84.4",
+        "v195.8",
+        "h-220"
+      ]
+    ],
+    [
+      "lampRelay:VCC",
+      "bb:bp.46",
+      "red",
+      [
+        "h0"
+      ]
+    ],
+    [
+      "esp:D26",
+      "pumpRelay:IN",
+      "green",
+      [
+        "h-53",
+        "v409.8",
+        "h1094.4",
+        "v-512.4"
+      ]
+    ],
+    [
+      "tank:VCC",
+      "bb:bp.28",
+      "red",
+      [
+        "v48.3",
+        "h-85.3",
+        "v-230.4",
+        "h115.2"
+      ]
+    ],
+    [
+      "soil:GND",
+      "bb:tn.21",
+      "black",
+      [
+        "v134.4",
+        "h9.6"
+      ]
+    ],
+    [
+      "soil:VCC",
+      "bb:tp.22",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "pull:1",
+      "bb:13t.a",
+      "magenta",
+      [
+        "h-2.75",
+        "v-12.2",
+        "h19.2",
+        "v86.4",
+        "h28.8"
+      ]
+    ],
+    [
+      "esp:D4",
+      "bb:13t.b",
+      "magenta",
+      [
+        "h167.5",
+        "v-70"
+      ]
+    ],
+    [
+      "bb:13t.c",
+      "dht:SDA",
+      "magenta",
+      [
+        "v0",
+        "h19.2",
+        "v-124.8",
+        "h-28.8",
+        "v-76.8",
+        "h-48",
+        "v28.8",
+        "h-28.8"
+      ]
+    ],
+    [
+      "esp:GND.1",
+      "bb:tn.1",
+      "black",
+      [
+        "h71.5",
+        "v-12.6"
+      ]
+    ],
+    [
+      "esp:3V3",
+      "bb:tp.1",
+      "red",
+      [
+        "v-2.9",
+        "h61.9",
+        "v-192"
+      ]
+    ],
+    [
+      "esp:VIN",
+      "bb:bp.1",
+      "red",
+      [
+        "h-14.6",
+        "v64.3",
+        "h297.6"
+      ]
+    ],
+    [
+      "bb:bp.25",
+      "bb:bp.26",
+      "red",
+      []
+    ],
+    [
+      "bb:bn.25",
+      "bb:bn.26",
+      "black",
+      []
+    ],
+    [
+      "bb:tp.25",
+      "bb:tp.26",
+      "red",
+      []
+    ],
+    [
+      "bb:tn.25",
+      "bb:tn.26",
+      "black",
+      []
+    ]
+  ],
+  "serialMonitor": {
+    "convertEol": true,
+    "display": "always",
+    "newline": "lf"
+  },
+  "dependencies": {}
+}

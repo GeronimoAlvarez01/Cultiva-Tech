@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {isUbidotsUrl,readSavedUbidotsUrl,saveUbidotsUrl} from '../src/lib/ubidots.js';
+assert.equal(isUbidotsUrl('https://stem.ubidots.com/app/dashboards/public/dashboard/abc'),true);
+assert.equal(isUbidotsUrl('https://ubidots.com/x'),true);
+for(const bad of ['http://stem.ubidots.com/x','https://evilubidots.com/x','https://ubidots.com.evil.io/x','https://u:p@stem.ubidots.com/x','javascript:alert(1)','','nada'])assert.equal(isUbidotsUrl(bad),false,bad);
+const mem=new Map();const st={getItem:k=>mem.get(k)??null,setItem:(k,v)=>mem.set(k,v),removeItem:k=>mem.delete(k)};
+saveUbidotsUrl('https://stem.ubidots.com/a',st);assert.equal(readSavedUbidotsUrl(st),'https://stem.ubidots.com/a');
+mem.set('cultivatech.ubidots.dashboard','http://malo.com');assert.equal(readSavedUbidotsUrl(st),'');
+saveUbidotsUrl('',st);assert.equal(readSavedUbidotsUrl(st),'');
+assert.equal(readSavedUbidotsUrl({getItem(){throw Error('x');}}),'');
+console.log('PASS: validación de enlaces de Ubidots y almacenamiento tolerante a fallos');

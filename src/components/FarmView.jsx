@@ -1,0 +1,10 @@
+import React,{useEffect,useRef,useState} from 'react';
+import {FarmScene} from '../lib/FarmScene.js';
+import {sensorInfo} from '../sensorInfo.js';
+export default function FarmView({data,stale,packet,origin}){
+ const host=useRef(null),scene=useRef(null);const [info,setInfo]=useState(null),[error,setError]=useState('');
+ useEffect(()=>{try{scene.current=new FarmScene(host.current,id=>setInfo(sensorInfo[id]||sensorInfo.sensors));}catch(e){setError(e.message);}return()=>{scene.current?.dispose();scene.current=null;};},[]);
+ useEffect(()=>{scene.current?.setState(data||{soil:0,tank:0,pump:false,lamp:false},data?.source==='wokwi',stale);},[data,stale]);
+ useEffect(()=>{if(packet.id&&packet.kind!=='demo')scene.current?.packet(packet.kind);},[packet]);
+ return <section className="card farm"><div className="card-title"><h2>Campo tridimensional</h2><span>{origin==='import'?'Registro reproducido':data?.source==='demo'?'Demostración':stale?'Sin dato reciente':'Datos de Wokwi'}</span></div><div className="toolbar"><button onClick={()=>scene.current?.setView('field')}>Cultivo</button><button onClick={()=>scene.current?.setView('network')}>Viaje de los datos</button><button onClick={()=>scene.current?.reset()}>Restablecer cámara</button><button onClick={()=>scene.current?.toggleLabels()}>Etiquetas</button></div><div ref={host} className="scene" aria-label="Campo 3D"><div data-labels="" className="labels"/></div>{error&&<p role="alert">No se pudo crear la escena: {error}</p>}<p className="legend"><span><i className="dot alert">⚠</i> alerta del sensor</span><span><i className="dot fault">✖</i> falla del sensor</span><span>💧 gotas = riego activo</span><span>💡 cono de luz = iluminación encendida</span></p><p className="muted">Arrastra para girar y usa la rueda para acercar. Las animaciones no demuestran caudal físico.</p>{info&&<div className="sensor-info"><button onClick={()=>setInfo(null)} aria-label="Cerrar información">Cerrar</button><h3>{info[0]}</h3><p>{info[1]}</p><p>{info[2]}</p></div>}</section>;
+}

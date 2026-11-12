@@ -1,0 +1,858 @@
+<!doctype html><html lang="es"><meta charset="utf-8"><title>Preparar Wokwi · CultivaTech</title><h1>Archivos CultivaTech</h1><p>Copiar cada bloque al archivo indicado. No incluye claves de sesión.</p><h2>Firmware</h2><textarea aria-label="Firmware" readonly style="width:100%;height:250px">/* CultivaTech 1.0 | Banco educativo de cultivo de cafe
+ * Datos exclusivamente simulados. Control local separado de la tarea de red.
+ * La clave se introduce por Serial y permanece solo en RAM.
+ * PAIR &lt;sala de 8-32 caracteres&gt; &lt;clave de 64 caracteres hexadecimales&gt;
+ */
+#include &lt;WiFi.h&gt;
+#include &lt;WiFiClientSecure.h&gt;
+#include &lt;PubSubClient.h&gt;
+#include &lt;ArduinoJson.h&gt;
+#include &lt;DHT.h&gt;
+#include &lt;mbedtls/md.h&gt;
+#include &lt;time.h&gt;
+#include &lt;sys/time.h&gt;
+#include &lt;esp_sntp.h&gt;
+#pragma once
+#include &lt;stdint.h&gt;
+#include &lt;math.h&gt;
+
+// Umbrales didacticos; no son una prescripcion agronomica para cafe.
+struct Inputs {
+  float soil = 50, tank = 70, light = 70;
+  bool sensorOk = false, networkRequired = false, networkUp = false;
+};
+struct ControlLogic {
+  bool automatic = true, requestWater = false, requestLight = false;
+  bool pump = false, lamp = false;
+  bool timeoutLatch = false, lowTankLatch = false;
+  uint32_t waterStarted = 0, manualUntil = 0;
+  const char* reason = &quot;STARTUP&quot;;
+  static constexpr uint32_t MAX_WATER_MS = 60000;
+  static constexpr uint32_t MANUAL_LEASE_MS = 30000;
+  void setMode(bool autoMode) {
+    automatic = autoMode; requestWater = false; requestLight = false;
+    pump = lamp = false;
+  }
+  void manualWater(bool on, uint32_t now) {
+    if (!automatic) { requestWater = on; manualUntil = now + MANUAL_LEASE_MS; }
+  }
+  void acknowledge() { timeoutLatch = false; requestWater = false; }
+  void tick(const Inputs&amp; in, uint32_t now) {
+    bool valid = in.sensorOk &amp;&amp; isfinite(in.soil) &amp;&amp; isfinite(in.tank) &amp;&amp;
+      isfinite(in.light) &amp;&amp; in.soil &gt;= 0 &amp;&amp; in.soil &lt;= 100 &amp;&amp;
+      in.tank &gt;= 0 &amp;&amp; in.tank &lt;= 100 &amp;&amp; in.light &gt;= 0 &amp;&amp; in.light &lt;= 100;
+    if (valid &amp;&amp; in.tank &lt; 15) lowTankLatch = true;
+    if (valid &amp;&amp; in.tank &gt;= 20) lowTankLatch = false;
+    if (pump &amp;&amp; uint32_t(now - waterStarted) &gt;= MAX_WATER_MS) timeoutLatch = true;
+    bool netFault = in.networkRequired &amp;&amp; !in.networkUp;
+    reason = !valid ? &quot;SENSOR_FAULT&quot; : lowTankLatch ? &quot;LOW_TANK&quot; :
+      timeoutLatch ? &quot;MAX_RUNTIME&quot; : netFault ? &quot;NETWORK_LOSS&quot; : &quot;OK&quot;;
+    if (!valid || lowTankLatch || timeoutLatch || netFault) {
+      pump = false; requestWater = false;
+    } else {
+      bool desired;
+      if (automatic) desired = pump ? in.soil &lt; 60 : in.soil &lt; 40;
+      else {
+        if (int32_t(now - manualUntil) &gt;= 0) requestWater = false;
+        desired = requestWater;
+      }
+      if (desired &amp;&amp; !pump) waterStarted = now;
+      pump = desired;
+    }
+    if (!valid) lamp = false;
+    else if (automatic) lamp = lamp ? in.light &lt; 40 : in.light &lt; 25;
+    else lamp = requestLight;
+  }
+};
+
+#pragma once
+// DigiCert Global Root G2: Mozilla trust store, issuer chain observed at broker.emqx.io.
+static const char ROOT_CA[] PROGMEM = R&quot;PEM(-----BEGIN CERTIFICATE-----
+MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBh
+MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
+d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBH
+MjAeFw0xMzA4MDExMjAwMDBaFw0zODAxMTUxMjAwMDBaMGExCzAJBgNVBAYTAlVT
+MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5j
+b20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IEcyMIIBIjANBgkqhkiG
+9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuzfNNNx7a8myaJCtSnX/RrohCgiN9RlUyfuI
+2/Ou8jqJkTx65qsGGmvPrC3oXgkkRLpimn7Wo6h+4FR1IAWsULecYxpsMNzaHxmx
+1x7e/dfgy5SDN67sH0NO3Xss0r0upS/kqbitOtSZpLYl6ZtrAGCSYP9PIUkY92eQ
+q2EGnI/yuum06ZIya7XzV+hdG82MHauVBJVJ8zUtluNJbd134/tJS7SsVQepj5Wz
+tCO7TG1F8PapspUwtP1MVYwnSlcUfIKdzXOS0xZKBgyMUNGPHgm+F6HmIcr9g+UQ
+vIOlCsRnKPZzFBQ9RnbDhxSJITRNrw9FDKZJobq7nMWxM4MphQIDAQABo0IwQDAP
+BgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQUTiJUIBiV
+5uNu5g/6+rkS7QYXjzkwDQYJKoZIhvcNAQELBQADggEBAGBnKJRvDkhj6zHd6mcY
+1Yl9PMWLSn/pvtsrF9+wX3N3KjITOYFnQoQj8kVnNeyIv/iPsGEMNKSuIEyExtv4
+NeF22d+mQrvHRAiGfzZ0JFrabA0UWTW98kndth/Jsw1HKj2ZL7tcu7XUIOGZX1NG
+Fdtom/DzMNU+MeKNhJ7jitralj41E6Vf8PlwUHBHQRFXGU7Aj64GxJUTFy8bJZ91
+8rGOmaFvE7FBcf6IKshPECBV1/MUReXgRPTqh5Uykw7+U0b6LJ3/iyK5S9kJRaTe
+pLiaWN0bfVKfjllDiIGknibVb63dDcY3fe0Dkhvld1927jyNxF1WW6LZZm6zNTfl
+MrY=
+-----END CERTIFICATE-----
+)PEM&quot;;
+
+
+const int SOIL_PIN=34, LIGHT_PIN=35, DHT_PIN=4, TRIG_PIN=5, ECHO_PIN=18;
+const int PUMP_PIN=26, LAMP_PIN=27;
+
+const int RELAY_ON=LOW, RELAY_OFF=HIGH;
+const char* MQTT_HOST=&quot;broker.emqx.io&quot;;
+const uint16_t MQTT_PORT=8883;
+DHT dht(DHT_PIN,DHT22);
+ControlLogic ctl;
+Inputs input;
+WiFiClientSecure secureClient;
+PubSubClient mqtt(secureClient);
+SemaphoreHandle_t snapshotMutex;
+QueueHandle_t commandQueue;
+String latestBody, room, telemetryTopic, commandTopic, bootId;
+uint8_t sessionKey[32];
+volatile bool paired=false, networkUp=false, forcedOffline=false;
+uint32_t seq=0, lastSample=0;
+uint64_t lastCommandTime=0;
+float tempC=0, humidity=0, rawSoil=50, distanceCm=70;
+float soilHistory[3]={50,50,50};
+int soilIndex=0, soilCount=0;
+bool measured=false;
+struct Command { char action[16]; bool on; bool autoMode; };
+
+uint64_t unixMs(){ struct timeval tv; gettimeofday(&amp;tv,nullptr); return uint64_t(tv.tv_sec)*1000+tv.tv_usec/1000; }
+String macFor(const String&amp; topic,const String&amp; body){
+  String message=topic+&quot;\n&quot;+body;
+  unsigned char digest[32];
+  mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),sessionKey,32,
+    (const unsigned char*)message.c_str(),message.length(),digest);
+  char hex[65]; for(int i=0;i&lt;32;i++) sprintf(hex+i*2,&quot;%02x&quot;,digest[i]);
+  hex[64]=0; return String(hex);
+}
+bool sameMac(const String&amp; a,const String&amp; b){
+  if(a.length()!=64 || b.length()!=64) return false;
+  uint8_t diff=0; for(int i=0;i&lt;64;i++) diff |= a[i]^b[i]; return diff==0;
+}
+void received(char* topic,byte* data,unsigned int len){
+  if(len&gt;1500 || String(topic)!=commandTopic) return;
+  JsonDocument outer;
+  if(deserializeJson(outer,data,len)) return;
+  if(!outer[&quot;body&quot;].is&lt;const char*&gt;() || !outer[&quot;mac&quot;].is&lt;const char*&gt;()) return;
+  String body=outer[&quot;body&quot;].as&lt;String&gt;(), mac=outer[&quot;mac&quot;].as&lt;String&gt;();
+  if(!sameMac(mac,macFor(commandTopic,body))){ Serial.println(&quot;SECURITY: comando rechazado (firma)&quot;); return; }
+  JsonDocument command;
+  if(deserializeJson(command,body)) return;
+  uint64_t ts=command[&quot;ts&quot;].as&lt;uint64_t&gt;(), now=unixMs();
+  if(command[&quot;boot&quot;].as&lt;String&gt;()!=bootId || ts&lt;=lastCommandTime || ts&gt;now+5000 || now&gt;ts+15000){
+    Serial.println(&quot;SECURITY: comando rechazado (sesion/caducidad/repeticion)&quot;); return;
+  }
+  String action=command[&quot;action&quot;]|&quot;&quot;;
+  if(action!=&quot;mode&quot; &amp;&amp; action!=&quot;water&quot; &amp;&amp; action!=&quot;lamp&quot; &amp;&amp; action!=&quot;ack&quot;) return;
+  Command c={}; action.toCharArray(c.action,sizeof(c.action));
+  c.on=command[&quot;on&quot;]|false; c.autoMode=command[&quot;automatic&quot;]|true;
+  if(xQueueSend(commandQueue,&amp;c,0)==pdTRUE) lastCommandTime=ts;
+}
+void networkTask(void*){
+  uint32_t lastAttempt=0, lastPublish=0;
+  bool wifiStarted=false;
+  secureClient.setCACert(ROOT_CA);
+  secureClient.setHandshakeTimeout(30);
+  mqtt.setServer(MQTT_HOST,MQTT_PORT); mqtt.setCallback(received);
+  mqtt.setBufferSize(2048); mqtt.setKeepAlive(15); mqtt.setSocketTimeout(3);
+  for(;;){
+    if(!paired){ vTaskDelay(pdMS_TO_TICKS(100)); continue; }
+    if(forcedOffline){
+      networkUp=false;
+      if(mqtt.connected()) mqtt.disconnect();
+      if(wifiStarted){ WiFi.disconnect(); wifiStarted=false; }
+      vTaskDelay(pdMS_TO_TICKS(100)); continue;
+    }
+    if(!wifiStarted){
+      WiFi.mode(WIFI_STA); WiFi.begin(&quot;Wokwi-GUEST&quot;,&quot;&quot;,6);
+      sntp_set_sync_interval(15000);
+      configTime(0,0,&quot;pool.ntp.org&quot;,&quot;time.google.com&quot;);
+      wifiStarted=true; lastAttempt=0;
+      Serial.println(&quot;NET: conectando Wi-Fi y sincronizando reloj...&quot;);
+    }
+    if(WiFi.status()!=WL_CONNECTED || time(nullptr)&lt;1700000000){
+      networkUp=false; vTaskDelay(pdMS_TO_TICKS(100)); continue;
+    }
+    if(!mqtt.connected()){
+      networkUp=false;
+      if(lastAttempt==0 || uint32_t(millis()-lastAttempt)&gt;10000){
+        lastAttempt=millis();
+        String clientId=&quot;ct-esp-&quot;+bootId;
+        if(mqtt.connect(clientId.c_str())){
+          mqtt.subscribe(commandTopic.c_str(),1); networkUp=true;
+          Serial.println(&quot;NET: MQTT/TLS conectado. Telemetria autenticada activa.&quot;);
+        } else { Serial.printf(&quot;NET: MQTT no disponible (%d). Reintento seguro.\n&quot;,mqtt.state()); char tlsError[160]; secureClient.lastError(tlsError,sizeof(tlsError)); Serial.printf(&quot;NET TLS: %s\n&quot;,tlsError); }
+      }
+      vTaskDelay(pdMS_TO_TICKS(100)); continue;
+    }
+    mqtt.loop(); networkUp=mqtt.connected();
+    if(uint32_t(millis()-lastPublish)&gt;=2000){
+      String body;
+      if(xSemaphoreTake(snapshotMutex,pdMS_TO_TICKS(50))==pdTRUE){body=latestBody;xSemaphoreGive(snapshotMutex);}
+      if(body.length()){
+        JsonDocument envelope; envelope[&quot;body&quot;]=body; envelope[&quot;mac&quot;]=macFor(telemetryTopic,body);
+        String out; serializeJson(envelope,out);
+        if(!mqtt.publish(telemetryTopic.c_str(),out.c_str(),false)) Serial.println(&quot;NET: muestra no enviada&quot;);
+      }
+      lastPublish=millis();
+    }
+    vTaskDelay(pdMS_TO_TICKS(20));
+  }
+}
+void pairLine(String line){
+  line.trim();
+  if(line==&quot;HELP&quot;) {Serial.println(&quot;PAIR &lt;sala&gt; &lt;clave hex de 64 caracteres&gt; | ACK&quot;);return;}
+  if(line==&quot;ACK&quot;){ctl.acknowledge();return;}
+  if(!line.startsWith(&quot;PAIR &quot;)) return;
+  if(paired){ Serial.println(&quot;PAIR: ya vinculado; reinicia para cambiar de sala.&quot;); return; }
+  int split=line.indexOf(&#x27; &#x27;,5);
+  if(split&lt;0) return;
+  String newRoom=line.substring(5,split), key=line.substring(split+1);
+  if(newRoom.length()&lt;8 || newRoom.length()&gt;32 || key.length()!=64){Serial.println(&quot;PAIR: formato invalido&quot;);return;}
+  for(unsigned int i=0;i&lt;newRoom.length();i++) if(!isalnum(newRoom[i]) &amp;&amp; newRoom[i]!=&#x27;-&#x27;) return;
+  for(int i=0;i&lt;64;i++) if(!isxdigit(key[i])) return;
+  for(int i=0;i&lt;32;i++) sessionKey[i]=strtoul(key.substring(i*2,i*2+2).c_str(),nullptr,16);
+  room=newRoom;
+  telemetryTopic=&quot;cultivatech/v1/&quot;+room+&quot;/telemetry&quot;;
+  commandTopic=&quot;cultivatech/v1/&quot;+room+&quot;/command&quot;;
+  paired=true;
+  Serial.println(&quot;PAIR: sesion recibida. Clave en RAM; no se imprime ni se guarda.&quot;);
+}
+void sampleSensors(){
+  tempC=dht.readTemperature(); humidity=dht.readHumidity();
+  if(!isfinite(tempC)) Serial.println(&quot;DHT: lectura invalida&quot;);
+  rawSoil=analogRead(SOIL_PIN)*100.0f/4095.0f;
+  soilHistory[soilIndex]=rawSoil; soilIndex=(soilIndex+1)%3; if(soilCount&lt;3)soilCount++;
+  float sum=0;for(int i=0;i&lt;soilCount;i++)sum+=soilHistory[i]; input.soil=sum/soilCount;
+  input.light=100.0f-analogRead(LIGHT_PIN)*100.0f/4095.0f;
+  digitalWrite(TRIG_PIN,LOW); delayMicroseconds(2); digitalWrite(TRIG_PIN,HIGH);
+  delayMicroseconds(10); digitalWrite(TRIG_PIN,LOW);
+  unsigned long duration=pulseIn(ECHO_PIN,HIGH,25000);
+  distanceCm=duration*0.0343f/2.0f;
+  input.tank=constrain((35.0f-distanceCm)*100.0f/30.0f,0.0f,100.0f);
+  measured=duration&gt;0 &amp;&amp; distanceCm&gt;=2 &amp;&amp; distanceCm&lt;=400 &amp;&amp;
+    isfinite(tempC)&amp;&amp;tempC&gt;=-40&amp;&amp;tempC&lt;=80&amp;&amp;isfinite(humidity)&amp;&amp;humidity&gt;=0&amp;&amp;humidity&lt;=100;
+}
+void publishSnapshot(){
+  JsonDocument doc;
+  doc[&quot;v&quot;]=1; doc[&quot;source&quot;]=&quot;wokwi&quot;; doc[&quot;device&quot;]=&quot;esp32-cultivatech&quot;;
+  doc[&quot;boot&quot;]=bootId; doc[&quot;seq&quot;]=++seq; doc[&quot;ts&quot;]=unixMs(); doc[&quot;uptime&quot;]=millis();
+  doc[&quot;soil&quot;]=roundf(input.soil*10)/10; doc[&quot;soilRaw&quot;]=roundf(rawSoil*10)/10;
+  if(isfinite(tempC))doc[&quot;temp&quot;]=roundf(tempC*10)/10;else doc[&quot;temp&quot;]=nullptr;
+  if(isfinite(humidity))doc[&quot;humidity&quot;]=roundf(humidity*10)/10;else doc[&quot;humidity&quot;]=nullptr;
+  doc[&quot;light&quot;]=roundf(input.light*10)/10; doc[&quot;tank&quot;]=roundf(input.tank*10)/10;
+  doc[&quot;distance&quot;]=roundf(distanceCm*10)/10;
+  doc[&quot;sensorOk&quot;]=input.sensorOk; doc[&quot;automatic&quot;]=ctl.automatic;
+  doc[&quot;pump&quot;]=ctl.pump; doc[&quot;lamp&quot;]=ctl.lamp;
+  doc[&quot;reason&quot;]=ctl.reason; doc[&quot;wifi&quot;]=WiFi.status()==WL_CONNECTED;
+  doc[&quot;mqtt&quot;]=networkUp; doc[&quot;rssi&quot;]=WiFi.status()==WL_CONNECTED?WiFi.RSSI():0;
+  doc[&quot;waterElapsed&quot;]=ctl.pump?uint32_t(millis()-ctl.waterStarted)/1000:0;
+  String body;serializeJson(doc,body);
+  if(xSemaphoreTake(snapshotMutex,pdMS_TO_TICKS(20))==pdTRUE){latestBody=body;xSemaphoreGive(snapshotMutex);}
+  Serial.println(&quot;CT_DATA &quot;+body);
+  Serial.printf(&quot;SAMPLE #%lu suelo=%.1f%% tanque=%.1f%% temp=%.1fC bomba=%s motivo=%s\n&quot;,
+    (unsigned long)seq,input.soil,input.tank,tempC,ctl.pump?&quot;ON&quot;:&quot;OFF&quot;,ctl.reason);
+}
+void setup(){
+  setCpuFrequencyMhz(80);
+  Serial.begin(115200);
+  for(int pin:{PUMP_PIN,LAMP_PIN}){digitalWrite(pin,RELAY_OFF);pinMode(pin,OUTPUT);}
+  pinMode(TRIG_PIN,OUTPUT);pinMode(ECHO_PIN,INPUT);
+
+  analogReadResolution(12);dht.begin();
+  char boot[17];sprintf(boot,&quot;%08lx%08lx&quot;,(unsigned long)esp_random(),(unsigned long)esp_random());bootId=boot;
+  snapshotMutex=xSemaphoreCreateMutex(); commandQueue=xQueueCreate(8,sizeof(Command));
+  xTaskCreatePinnedToCore(networkTask,&quot;mqtt&quot;,12288,nullptr,1,nullptr,0);
+  Serial.println(&quot;CULTIVATECH 1.1 | Prototipo educativo ESP32&quot;);
+  Serial.println(&quot;CT_READY&quot;);
+  Serial.println(&quot;Control local activo. Pega PAIR desde Conectar Wokwi del visor 3D.&quot;);
+  Serial.println(&quot;Suelo: potenciometro; HC-SR04: lleno 5 cm, vacio 35 cm. Solo bomba y luz. ACK por Serial.&quot;);
+}
+void loop(){
+  static String line;
+  while(Serial.available()){
+    char c=Serial.read();
+    if(c==&#x27;\n&#x27;){pairLine(line);line=&quot;&quot;;}else if(c!=&#x27;\r&#x27; &amp;&amp; line.length()&lt;120)line+=c;
+  }
+  forcedOffline=false;
+  if(forcedOffline)networkUp=false;
+
+  Command c;
+  while(xQueueReceive(commandQueue,&amp;c,0)==pdTRUE){
+    if(!strcmp(c.action,&quot;mode&quot;))ctl.setMode(c.autoMode);
+    else if(!strcmp(c.action,&quot;water&quot;))ctl.manualWater(c.on,millis());
+    else if(!strcmp(c.action,&quot;lamp&quot;) &amp;&amp; !ctl.automatic)ctl.requestLight=c.on;
+    else if(!strcmp(c.action,&quot;ack&quot;))ctl.acknowledge();
+  }
+  bool sample=uint32_t(millis()-lastSample)&gt;=2000;
+  if(sample){sampleSensors();lastSample=millis();}
+  input.sensorOk=measured;
+  input.networkUp=networkUp &amp;&amp; !forcedOffline;
+  // Control automatico local independiente del broker; manual requiere enlace.
+  input.networkRequired=!ctl.automatic;
+  ctl.tick(input,millis());
+  digitalWrite(PUMP_PIN,ctl.pump?RELAY_ON:RELAY_OFF);
+
+  digitalWrite(LAMP_PIN,ctl.lamp?RELAY_ON:RELAY_OFF);
+  if(sample)publishSnapshot();
+  delay(10);
+}
+</textarea><h2>Circuito</h2><textarea aria-label="Circuito" readonly style="width:100%;height:250px">{
+  &quot;version&quot;: 1,
+  &quot;author&quot;: &quot;Cultiva Tech - Geronimo Alvarez y Melanny Alzate&quot;,
+  &quot;editor&quot;: &quot;wokwi&quot;,
+  &quot;parts&quot;: [
+    {
+      &quot;type&quot;: &quot;wokwi-breadboard&quot;,
+      &quot;id&quot;: &quot;bb&quot;,
+      &quot;left&quot;: 100,
+      &quot;top&quot;: 150,
+      &quot;attrs&quot;: {},
+      &quot;rotate&quot;: 0
+    },
+    {
+      &quot;type&quot;: &quot;wokwi-esp32-devkit-v1&quot;,
+      &quot;id&quot;: &quot;esp&quot;,
+      &quot;left&quot;: -240,
+      &quot;top&quot;: 190,
+      &quot;attrs&quot;: {
+        &quot;cpuFrequency&quot;: &quot;16&quot;,
+        &quot;label&quot;: &quot;ESP32&quot;
+      },
+      &quot;rotate&quot;: 0
+    },
+    {
+      &quot;type&quot;: &quot;wokwi-dht22&quot;,
+      &quot;id&quot;: &quot;dht&quot;,
+      &quot;left&quot;: 125,
+      &quot;top&quot;: -90,
+      &quot;attrs&quot;: {
+        &quot;temperature&quot;: &quot;24&quot;,
+        &quot;humidity&quot;: &quot;65&quot;,
+        &quot;label&quot;: &quot;DHT22&quot;
+      },
+      &quot;rotate&quot;: 0
+    },
+    {
+      &quot;type&quot;: &quot;wokwi-potentiometer&quot;,
+      &quot;id&quot;: &quot;soil&quot;,
+      &quot;left&quot;: 325,
+      &quot;top&quot;: -60,
+      &quot;attrs&quot;: {
+        &quot;value&quot;: &quot;450&quot;,
+        &quot;label&quot;: &quot;Humedad de suelo (simulada)&quot;
+      },
+      &quot;rotate&quot;: 0
+    },
+    {
+      &quot;type&quot;: &quot;wokwi-photoresistor-sensor&quot;,
+      &quot;id&quot;: &quot;light&quot;,
+      &quot;left&quot;: 530,
+      &quot;top&quot;: -55,
+      &quot;attrs&quot;: {
+        &quot;lux&quot;: &quot;500&quot;,
+        &quot;label&quot;: &quot;LDR AO&quot;
+      },
+      &quot;rotate&quot;: 0
+    },
+    {
+      &quot;type&quot;: &quot;wokwi-hc-sr04&quot;,
+      &quot;id&quot;: &quot;tank&quot;,
+      &quot;left&quot;: 350,
+      &quot;top&quot;: 510,
+      &quot;attrs&quot;: {
+        &quot;distance&quot;: &quot;20&quot;,
+        &quot;label&quot;: &quot;Nivel de agua HC-SR04&quot;
+      },
+      &quot;rotate&quot;: 0
+    },
+    {
+      &quot;type&quot;: &quot;wokwi-resistor&quot;,
+      &quot;id&quot;: &quot;pull&quot;,
+      &quot;left&quot;: 175,
+      &quot;top&quot;: 65,
+      &quot;attrs&quot;: {
+        &quot;value&quot;: &quot;10000&quot;
+      },
+      &quot;rotate&quot;: 90
+    },
+    {
+      &quot;type&quot;: &quot;wokwi-relay-module&quot;,
+      &quot;id&quot;: &quot;pumpRelay&quot;,
+      &quot;left&quot;: 910,
+      &quot;top&quot;: 150,
+      &quot;attrs&quot;: {
+        &quot;transistor&quot;: &quot;pnp&quot;,
+        &quot;label&quot;: &quot;Canal 1 - Bomba&quot;
+      },
+      &quot;rotate&quot;: 0
+    },
+    {
+      &quot;type&quot;: &quot;wokwi-resistor&quot;,
+      &quot;id&quot;: &quot;pumpR&quot;,
+      &quot;left&quot;: 1110,
+      &quot;top&quot;: 175,
+      &quot;attrs&quot;: {
+        &quot;value&quot;: &quot;220&quot;
+      },
+      &quot;rotate&quot;: 0
+    },
+    {
+      &quot;type&quot;: &quot;wokwi-led&quot;,
+      &quot;id&quot;: &quot;pumpLED&quot;,
+      &quot;left&quot;: 1230,
+      &quot;top&quot;: 160,
+      &quot;attrs&quot;: {
+        &quot;color&quot;: &quot;blue&quot;,
+        &quot;label&quot;: &quot;Bomba&quot;
+      },
+      &quot;rotate&quot;: 0
+    },
+    {
+      &quot;type&quot;: &quot;wokwi-relay-module&quot;,
+      &quot;id&quot;: &quot;lampRelay&quot;,
+      &quot;left&quot;: 910,
+      &quot;top&quot;: 350,
+      &quot;attrs&quot;: {
+        &quot;transistor&quot;: &quot;pnp&quot;,
+        &quot;label&quot;: &quot;Canal 2 - Iluminacion&quot;
+      },
+      &quot;rotate&quot;: 0
+    },
+    {
+      &quot;type&quot;: &quot;wokwi-resistor&quot;,
+      &quot;id&quot;: &quot;lampR&quot;,
+      &quot;left&quot;: 1110,
+      &quot;top&quot;: 375,
+      &quot;attrs&quot;: {
+        &quot;value&quot;: &quot;220&quot;
+      },
+      &quot;rotate&quot;: 0
+    },
+    {
+      &quot;type&quot;: &quot;wokwi-led&quot;,
+      &quot;id&quot;: &quot;lampLED&quot;,
+      &quot;left&quot;: 1230,
+      &quot;top&quot;: 360,
+      &quot;attrs&quot;: {
+        &quot;color&quot;: &quot;yellow&quot;,
+        &quot;label&quot;: &quot;Iluminacion&quot;
+      },
+      &quot;rotate&quot;: 0
+    }
+  ],
+  &quot;connections&quot;: [
+    [
+      &quot;esp:3V3&quot;,
+      &quot;bb:tp.1&quot;,
+      &quot;red&quot;,
+      [
+        &quot;h50&quot;,
+        &quot;v-100&quot;,
+        &quot;*&quot;,
+        &quot;v-20&quot;
+      ]
+    ],
+    [
+      &quot;esp:VIN&quot;,
+      &quot;bb:bp.1&quot;,
+      &quot;red&quot;,
+      [
+        &quot;h-35&quot;,
+        &quot;v180&quot;,
+        &quot;h290&quot;,
+        &quot;*&quot;,
+        &quot;v30&quot;
+      ]
+    ],
+    [
+      &quot;esp:GND.1&quot;,
+      &quot;bb:tn.1&quot;,
+      &quot;black&quot;,
+      [
+        &quot;h65&quot;,
+        &quot;v-75&quot;,
+        &quot;*&quot;,
+        &quot;v-10&quot;
+      ]
+    ],
+    [
+      &quot;bb:tn.50&quot;,
+      &quot;bb:bn.50&quot;,
+      &quot;black&quot;,
+      [
+        &quot;h35&quot;,
+        &quot;v172.8&quot;,
+        &quot;h-35&quot;
+      ]
+    ],
+    [
+      &quot;bb:tp.25&quot;,
+      &quot;bb:tp.26&quot;,
+      &quot;red&quot;,
+      [
+        &quot;h0&quot;
+      ]
+    ],
+    [
+      &quot;bb:bp.25&quot;,
+      &quot;bb:bp.26&quot;,
+      &quot;red&quot;,
+      [
+        &quot;h0&quot;
+      ]
+    ],
+    [
+      &quot;bb:tn.25&quot;,
+      &quot;bb:tn.26&quot;,
+      &quot;black&quot;,
+      [
+        &quot;h0&quot;
+      ]
+    ],
+    [
+      &quot;bb:bn.25&quot;,
+      &quot;bb:bn.26&quot;,
+      &quot;black&quot;,
+      [
+        &quot;h0&quot;
+      ]
+    ],
+    [
+      &quot;dht:VCC&quot;,
+      &quot;bb:tp.6&quot;,
+      &quot;red&quot;,
+      [
+        &quot;v25&quot;,
+        &quot;*&quot;,
+        &quot;v-25&quot;
+      ]
+    ],
+    [
+      &quot;dht:GND&quot;,
+      &quot;bb:tn.7&quot;,
+      &quot;black&quot;,
+      [
+        &quot;v35&quot;,
+        &quot;*&quot;,
+        &quot;v-15&quot;
+      ]
+    ],
+    [
+      &quot;soil:VCC&quot;,
+      &quot;bb:tp.22&quot;,
+      &quot;red&quot;,
+      [
+        &quot;v25&quot;,
+        &quot;*&quot;,
+        &quot;v-25&quot;
+      ]
+    ],
+    [
+      &quot;soil:GND&quot;,
+      &quot;bb:tn.23&quot;,
+      &quot;black&quot;,
+      [
+        &quot;v35&quot;,
+        &quot;*&quot;,
+        &quot;v-15&quot;
+      ]
+    ],
+    [
+      &quot;light:VCC&quot;,
+      &quot;bb:tp.38&quot;,
+      &quot;red&quot;,
+      [
+        &quot;v25&quot;,
+        &quot;*&quot;,
+        &quot;v-25&quot;
+      ]
+    ],
+    [
+      &quot;light:GND&quot;,
+      &quot;bb:tn.39&quot;,
+      &quot;black&quot;,
+      [
+        &quot;v35&quot;,
+        &quot;*&quot;,
+        &quot;v-15&quot;
+      ]
+    ],
+    [
+      &quot;dht:SDA&quot;,
+      &quot;esp:D4&quot;,
+      &quot;green&quot;,
+      [
+        &quot;v45&quot;,
+        &quot;h-155&quot;,
+        &quot;v-135&quot;,
+        &quot;h-180&quot;,
+        &quot;*&quot;,
+        &quot;h70&quot;
+      ]
+    ],
+    [
+      &quot;dht:SDA&quot;,
+      &quot;pull:1&quot;,
+      &quot;green&quot;,
+      [
+        &quot;v10&quot;,
+        &quot;h25&quot;
+      ]
+    ],
+    [
+      &quot;pull:2&quot;,
+      &quot;bb:tp.9&quot;,
+      &quot;red&quot;,
+      [
+        &quot;v15&quot;,
+        &quot;*&quot;,
+        &quot;v-35&quot;
+      ]
+    ],
+    [
+      &quot;soil:SIG&quot;,
+      &quot;esp:D34&quot;,
+      &quot;orange&quot;,
+      [
+        &quot;v55&quot;,
+        &quot;h-130&quot;,
+        &quot;v-165&quot;,
+        &quot;h-520&quot;,
+        &quot;*&quot;,
+        &quot;h-50&quot;
+      ]
+    ],
+    [
+      &quot;light:AO&quot;,
+      &quot;esp:D35&quot;,
+      &quot;magenta&quot;,
+      [
+        &quot;v65&quot;,
+        &quot;h90&quot;,
+        &quot;v-205&quot;,
+        &quot;h-1020&quot;,
+        &quot;*&quot;,
+        &quot;h-65&quot;
+      ]
+    ],
+    [
+      &quot;tank:VCC&quot;,
+      &quot;bb:bp.25&quot;,
+      &quot;red&quot;,
+      [
+        &quot;v30&quot;,
+        &quot;h-120&quot;,
+        &quot;*&quot;,
+        &quot;v40&quot;
+      ]
+    ],
+    [
+      &quot;tank:GND&quot;,
+      &quot;bb:bn.29&quot;,
+      &quot;black&quot;,
+      [
+        &quot;v40&quot;,
+        &quot;h110&quot;,
+        &quot;*&quot;,
+        &quot;v50&quot;
+      ]
+    ],
+    [
+      &quot;tank:TRIG&quot;,
+      &quot;esp:D5&quot;,
+      &quot;blue&quot;,
+      [
+        &quot;v65&quot;,
+        &quot;h-110&quot;,
+        &quot;v-220&quot;,
+        &quot;h-250&quot;,
+        &quot;*&quot;,
+        &quot;h85&quot;
+      ]
+    ],
+    [
+      &quot;tank:ECHO&quot;,
+      &quot;esp:D18&quot;,
+      &quot;cyan&quot;,
+      [
+        &quot;v80&quot;,
+        &quot;h-135&quot;,
+        &quot;v-245&quot;,
+        &quot;h-270&quot;,
+        &quot;*&quot;,
+        &quot;h100&quot;
+      ]
+    ],
+    [
+      &quot;pumpRelay:VCC&quot;,
+      &quot;bb:bp.42&quot;,
+      &quot;red&quot;,
+      [
+        &quot;h-45&quot;,
+        &quot;*&quot;,
+        &quot;v35&quot;
+      ]
+    ],
+    [
+      &quot;pumpRelay:GND&quot;,
+      &quot;bb:bn.42&quot;,
+      &quot;black&quot;,
+      [
+        &quot;h-60&quot;,
+        &quot;*&quot;,
+        &quot;v45&quot;
+      ]
+    ],
+    [
+      &quot;pumpRelay:IN&quot;,
+      &quot;esp:D26&quot;,
+      &quot;purple&quot;,
+      [
+        &quot;h-75&quot;,
+        &quot;v490&quot;,
+        &quot;h-1150&quot;,
+        &quot;*&quot;,
+        &quot;h-80&quot;
+      ]
+    ],
+    [
+      &quot;pumpRelay:COM&quot;,
+      &quot;bb:tp.42&quot;,
+      &quot;red&quot;,
+      [
+        &quot;h35&quot;,
+        &quot;v-100&quot;,
+        &quot;*&quot;,
+        &quot;v-45&quot;
+      ]
+    ],
+    [
+      &quot;pumpRelay:NO&quot;,
+      &quot;pumpR:1&quot;,
+      &quot;purple&quot;,
+      [
+        &quot;h25&quot;,
+        &quot;v0&quot;
+      ]
+    ],
+    [
+      &quot;pumpR:2&quot;,
+      &quot;pumpLED:A&quot;,
+      &quot;purple&quot;,
+      [
+        &quot;h30&quot;,
+        &quot;v0&quot;
+      ]
+    ],
+    [
+      &quot;pumpLED:C&quot;,
+      &quot;bb:bn.43&quot;,
+      &quot;black&quot;,
+      [
+        &quot;v80&quot;,
+        &quot;h-380&quot;,
+        &quot;*&quot;,
+        &quot;v60&quot;
+      ]
+    ],
+    [
+      &quot;lampRelay:VCC&quot;,
+      &quot;bb:bp.47&quot;,
+      &quot;red&quot;,
+      [
+        &quot;h-45&quot;,
+        &quot;*&quot;,
+        &quot;v35&quot;
+      ]
+    ],
+    [
+      &quot;lampRelay:GND&quot;,
+      &quot;bb:bn.47&quot;,
+      &quot;black&quot;,
+      [
+        &quot;h-60&quot;,
+        &quot;*&quot;,
+        &quot;v45&quot;
+      ]
+    ],
+    [
+      &quot;lampRelay:IN&quot;,
+      &quot;esp:D27&quot;,
+      &quot;yellow&quot;,
+      [
+        &quot;h-75&quot;,
+        &quot;v320&quot;,
+        &quot;h-1150&quot;,
+        &quot;*&quot;,
+        &quot;h-95&quot;
+      ]
+    ],
+    [
+      &quot;lampRelay:COM&quot;,
+      &quot;bb:tp.47&quot;,
+      &quot;red&quot;,
+      [
+        &quot;h35&quot;,
+        &quot;v-100&quot;,
+        &quot;*&quot;,
+        &quot;v-45&quot;
+      ]
+    ],
+    [
+      &quot;lampRelay:NO&quot;,
+      &quot;lampR:1&quot;,
+      &quot;yellow&quot;,
+      [
+        &quot;h25&quot;,
+        &quot;v0&quot;
+      ]
+    ],
+    [
+      &quot;lampR:2&quot;,
+      &quot;lampLED:A&quot;,
+      &quot;yellow&quot;,
+      [
+        &quot;h30&quot;,
+        &quot;v0&quot;
+      ]
+    ],
+    [
+      &quot;lampLED:C&quot;,
+      &quot;bb:bn.48&quot;,
+      &quot;black&quot;,
+      [
+        &quot;v80&quot;,
+        &quot;h-380&quot;,
+        &quot;*&quot;,
+        &quot;v60&quot;
+      ]
+    ],
+    [
+      &quot;esp:TX0&quot;,
+      &quot;$serialMonitor:RX&quot;,
+      &quot;&quot;,
+      [
+        &quot;h0&quot;
+      ]
+    ],
+    [
+      &quot;esp:RX0&quot;,
+      &quot;$serialMonitor:TX&quot;,
+      &quot;&quot;,
+      [
+        &quot;h0&quot;
+      ]
+    ]
+  ],
+  &quot;serialMonitor&quot;: {
+    &quot;display&quot;: &quot;always&quot;,
+    &quot;newline&quot;: &quot;lf&quot;,
+    &quot;convertEol&quot;: true
+  },
+  &quot;dependencies&quot;: {}
+}</textarea><h2>Bibliotecas</h2><textarea aria-label="Bibliotecas" readonly style="width:100%;height:250px">PubSubClient@2.8
+ArduinoJson@7.2.1
+DHT sensor library@1.4.6
+Adafruit Unified Sensor@1.1.15
+</textarea>

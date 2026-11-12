@@ -1,0 +1,5 @@
+import React from 'react';
+export default function Readings({data,stale}){
+ const fields=[['soil','Humedad de suelo','%','GPIO34'],['temp','Temperatura DHT22','°C','GPIO4'],['humidity','Humedad ambiental','%','GPIO4'],['tank','Nivel del tanque','%','HC-SR04 · GPIO5/18'],['light','Luz relativa','%','LDR · GPIO35']];
+ return <section className="card"><h2>Lecturas y actuadores</h2><div className="metrics">{fields.map(([key,label,unit,pin])=><div className="metric" key={key}><span>{label}</span><strong>{data?.[key]==null?'—':Number(data[key]).toFixed(key==='temp'?1:0)} <small>{unit}</small></strong><small>{pin}</small></div>)}</div><div className="status-row"><b>Bomba GPIO26: {stale?'Sin confirmar':data?.pump?'ON':'OFF'}</b><b>Iluminación GPIO27: {stale?'Sin confirmar':data?.lamp?'ON':'OFF'}</b><span className="heartbeat">{data?'Muestra #'+data.seq+' · ESP32 encendido hace '+Math.round((data.uptime||0)/1000)+' s':'Sin muestras'}</span><span>Modo: {data?data.automatic?'automático':'manual':'—'}</span></div><p>{stale?'Última lectura o sin datos; no se confirma el estado actual.':'Estado del control: '+(data?.reason||'OK')}</p></section>;
+}
