@@ -104,5 +104,5 @@ export default function App(){
  </div>
  <div role="tabpanel" id="panel-dashboard" aria-labelledby="tab-dashboard" hidden={tab!=='dashboard'}><UbidotsPanel active={tab==='dashboard'} ubidotsLink={live?d.ubidots:undefined} history={history} data={sim.data} stale={stale}/></div>
  <div role="tabpanel" id="panel-docs" aria-labelledby="tab-docs" hidden={tab!=='docs'}><DocsPanel active={tab==='docs'}/></div>
- <footer>Edita los componentes en src/components, la escena en src/lib/FarmScene.js y el firmware en wokwi/final. Solo simulación; el ECHO de 5 V del HC-SR04 requiere adaptación para un ESP32 físico.</footer></main></>;
+ </main></>;
 }

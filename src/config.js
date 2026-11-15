@@ -8,8 +8,8 @@ export const DEMO_LIMITS={soilOn:40,soilOff:60,lightOn:25,lightOff:40,tankStop:1
 // Documentos alojados en public/docs. Son los PDF de entrega de cada semana.
 export const DOCS=[
  {id:'s10',week:'Semana 10',title:'Documento técnico: integración y ética (prototipo a producto)',file:'semana-10-integracion-etica.pdf',pages:11},
- {id:'s10-esquema',week:'Semana 10',title:'Diagrama electrónico (3 hojas)',file:'semana-10-diagrama-electronico.pdf',pages:3},
+ {id:'s10-esquema',week:'Semana 10',title:'Diagrama electrónico',file:'semana-10-diagrama-electronico.pdf',pages:3},
  {id:'s12',week:'Semana 12',title:'Matriz comparativa de protocolos',file:'semana-12-protocolos.pdf',pages:5},
  {id:'s13',week:'Semana 13',title:'MQTT: montaje en Wokwi, MQTT Explorer e informe',file:'semana-13-mqtt.pdf',pages:26},
- {id:'s14',week:'Semana 14',title:'Dashboard en Ubidots, alertas y pruebas de latencia',file:'semana-14-dashboards.pdf',pages:7}
+ {id:'s14',week:'Semana 14',title:'Dashboard en Ubidots y alertas',file:'semana-14-dashboards.pdf',pages:7}
 ];
